@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN"> <head>
+    <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>我的导航页</title> <link rel="stylesheet" href="style.css"> </head>
+<body>
+    <div class="container">
+        <div class="search-section">
+            <form id="search-form" action="#" method="get" role="search"> <select id="search-engine-select" aria-label="选择搜索引擎">
+                    </select>
+                <input type="text" id="search-input" placeholder="输入搜索内容..." aria-label="搜索内容" autocomplete="off"> <button type="submit" id="search-button">搜索</button> </form>
+        </div>
+        <div id="links-container">
+            </div>
+        <div class="add-category-section">
+            <button id="add-category-button" class="control-button">+ 添加分类</button>
+        </div>
+        <div class="settings">
+            <button id="toggle-layout-button" class="control-button">切换列表/网格布局</button>
+            <hr>
+            <button id="export-button" class="control-button">导出数据</button>
+            <button id="import-button" class="control-button">导入数据</button>
+            <input type="file" id="import-input" accept=".json,.txt" style="display: none;">
+            <hr>
+            <label for="bg-upload">更换背景:</label>
+            <input type="file" id="bg-upload" accept="image/*">
+            <button id="clear-bg-button" class="control-button small-button">清除背景</button>            
+        </div>
+    </div> <div id="edit-modal" class="modal">
+        <div class="modal-content">
+            <h3 id="modal-title">编辑链接</h3> <input type="hidden" id="edit-id"> <input type="hidden" id="edit-category-name"> <label for="edit-text">文字:</label>
+            <input type="text" id="edit-text" placeholder="链接显示的文字">
+            <label for="edit-url">URL:</label>
+            <input type="url" id="edit-url" placeholder="https://example.com">
+            <label for="edit-link-category" id="edit-link-category-label">所属分类:</label>
+            <select id="edit-link-category"></select>
+            <label for="edit-link-order">排序序号:</label>
+            <input type="number" id="edit-link-order" placeholder="数字越小越靠前 (添加时自动)">            
+            <div class="modal-buttons">
+                <button id="delete-button">删除</button> 
+                <button id="cancel-button">取消</button>
+                <button id="save-button">保存</button>
+            </div>            
+        </div>
+    </div>
+    <div id="edit-category-modal" class="modal">
+        <div class="modal-content">
+            <h3>编辑分类</h3>
+            <input type="hidden" id="edit-category-original-name"> <label for="edit-category-new-name">新名称:</label>
+            <input type="text" id="edit-category-new-name" placeholder="输入新的分类名称">
+            <label for="edit-category-order">排序序号:</label>
+            <input type="number" id="edit-category-order" placeholder="数字越小越靠前">
+            <div class="modal-buttons">
+                 <button id="delete-category-button">删除分类</button> 
+                 <button id="cancel-category-button">取消</button>
+                 <button id="save-category-button">保存</button>
+            </div>
+        </div>
+    </div>    
+    <script src="script.js"></script>
+</body>
+</html>
