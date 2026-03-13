@@ -10,7 +10,7 @@
 file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/index.html
 ```
 
-js插件里配置好目录，扩展管理里允许访问文件网址打开
+js插件里配置好目录，扩展管理里允许访问文件网址打开，注意match也需要更改。
 
 ```
 // @match        file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/index.html*
