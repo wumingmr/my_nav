@@ -13,5 +13,7 @@ file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/ind
 js插件配置好目录
 
 ```
+// @match        file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/index.html*
+
 const localNavPagePath = "file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/index.html";
 ````
