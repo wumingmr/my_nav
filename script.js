@@ -270,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return [{
             id: generateUniqueId(),
             text: "源社区",
-            url: "https://ysqbbs.com/forum.php?mod=guide&view=hot&mobile=2&comiis_tab=2",
+            url: "https://ycoo.net/plugin.php?id=comiis_app_homestyle&mobile=2",
             category: "常用网站",
             sortOrder: now
         }, {
