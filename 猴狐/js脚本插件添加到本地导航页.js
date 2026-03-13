@@ -5,6 +5,7 @@
 // @description  适用于移动端
 // @author       无名
 // @match        *://*/*
+// @match        file:///storage/emulated/0/Android/data/com.lemurbrowser.exts/files/Download/index.html*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_openInTab
