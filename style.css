@@ -65,6 +65,7 @@ body {
 }
 
 .search-section {
+    position: relative;
     background-color: var(--section-bg);
     padding: var(--small-padding);
     border-radius: var(--border-radius-large);
@@ -129,6 +130,66 @@ body {
 
 #search-button:hover {
     background-color: var(--button-primary-bg-hover);
+}
+
+/* 书签搜索下拉面板 */
+.bookmark-results {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background-color: var(--select-bg);
+    border: 1px solid var(--input-border-color);
+    border-radius: var(--border-radius-medium);
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.bookmark-item {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-small);
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: var(--small-font-size);
+    color: var(--text-color);
+}
+
+.bookmark-item:hover,
+.bookmark-item-active {
+    background-color: var(--item-bg-hover);
+}
+
+.bookmark-item-title {
+    flex-shrink: 0;
+    font-weight: bold;
+}
+
+.bookmark-item-category {
+    flex-shrink: 0;
+    font-size: var(--smaller-font-size);
+    color: var(--text-color-placeholder);
+    background-color: rgba(255, 255, 255, 0.1);
+    padding: 1px 6px;
+    border-radius: var(--border-radius-small);
+}
+
+.bookmark-item-url {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-color-placeholder);
+    font-size: var(--smaller-font-size);
+    text-align: right;
+}
+
+.bookmark-empty {
+    padding: 10px 12px;
+    color: var(--text-color-placeholder);
+    font-size: var(--small-font-size);
 }
 
 .category {

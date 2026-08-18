@@ -188,6 +188,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchForm = document.getElementById('search-form');
     const searchEngineSelect = document.getElementById('search-engine-select');
     const searchInput = document.getElementById('search-input');
+    const bookmarkResultsEl = document.getElementById('bookmark-results');
     console.log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
     console.log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
     if (!editLinkOrderInput || !editLinkCategorySelect) {
@@ -259,6 +260,89 @@ document.addEventListener('DOMContentLoaded', () => {
         window.open(finalUrl, '_blank');
         const selectedEngineName = searchEngineSelect.options[searchEngineSelect.selectedIndex].text;
         localStorage.setItem(lastSearchEngineStorageKey, selectedEngineName);
+    }
+
+    /* ===== 书签搜索 ===== */
+    let activeBookmarkIndex = -1;
+    const MAX_BOOKMARK_RESULTS = 8;
+
+    function getBookmarkMatches(query) {
+        const q = query.toLowerCase();
+        const matches = [];
+        for (const link of linksData) {
+            if (!link || typeof link.text !== 'string' || typeof link.url !== 'string') continue;
+            const text = link.text.toLowerCase();
+            const url = link.url.toLowerCase();
+            const category = (link.category || '').toLowerCase();
+            if (text.includes(q) || url.includes(q) || category.includes(q)) {
+                matches.push(link);
+                if (matches.length >= MAX_BOOKMARK_RESULTS) break;
+            }
+        }
+        return matches;
+    }
+
+    function hideBookmarkResults() {
+        bookmarkResultsEl.hidden = true;
+        bookmarkResultsEl.innerHTML = '';
+        activeBookmarkIndex = -1;
+    }
+
+    function highlightBookmarkItem() {
+        const items = bookmarkResultsEl.querySelectorAll('.bookmark-item');
+        items.forEach((item, i) => {
+            item.classList.toggle('bookmark-item-active', i === activeBookmarkIndex);
+            if (i === activeBookmarkIndex) {
+                item.scrollIntoView({ block: 'nearest' });
+            }
+        });
+    }
+
+    function openBookmark(link) {
+        searchInput.value = '';
+        hideBookmarkResults();
+        window.open(link.url, '_blank');
+        searchInput.focus();
+    }
+
+    function renderBookmarkResults(query) {
+        if (!query.trim()) {
+            hideBookmarkResults();
+            return;
+        }
+        const matches = getBookmarkMatches(query.trim());
+        bookmarkResultsEl.innerHTML = '';
+        if (matches.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'bookmark-empty';
+            empty.textContent = '没有匹配的书签，回车将使用搜索引擎搜索';
+            bookmarkResultsEl.appendChild(empty);
+            bookmarkResultsEl.hidden = false;
+            activeBookmarkIndex = -1;
+            return;
+        }
+        matches.forEach((link, index) => {
+            const item = document.createElement('div');
+            item.className = 'bookmark-item';
+            item.dataset.index = index;
+            const title = document.createElement('span');
+            title.className = 'bookmark-item-title';
+            title.textContent = link.text;
+            const category = document.createElement('span');
+            category.className = 'bookmark-item-category';
+            category.textContent = link.category || '未分类';
+            const url = document.createElement('span');
+            url.className = 'bookmark-item-url';
+            url.textContent = link.url;
+            item.appendChild(title);
+            item.appendChild(category);
+            item.appendChild(url);
+            item.addEventListener('click', () => openBookmark(link));
+            bookmarkResultsEl.appendChild(item);
+        });
+        activeBookmarkIndex = 0;
+        highlightBookmarkItem();
+        bookmarkResultsEl.hidden = false;
     }
 
     function generateUniqueId() {
@@ -1021,7 +1105,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
     searchForm.addEventListener('submit', (event) => {
         event.preventDefault();
+        if (!bookmarkResultsEl.hidden) {
+            const active = bookmarkResultsEl.querySelector('.bookmark-item-active');
+            if (active) {
+                const index = parseInt(active.dataset.index, 10);
+                const matches = getBookmarkMatches(searchInput.value.trim());
+                if (matches[index]) {
+                    openBookmark(matches[index]);
+                    return;
+                }
+            }
+        }
         performSearch();
+    });
+
+    // 书签搜索：实时过滤 + 键盘导航（↑/↓ 选择，回车打开，Esc 关闭）
+    searchInput.addEventListener('input', () => {
+        renderBookmarkResults(searchInput.value);
+    });
+    searchInput.addEventListener('focus', () => {
+        if (searchInput.value.trim()) renderBookmarkResults(searchInput.value);
+    });
+    searchInput.addEventListener('keydown', (event) => {
+        if (bookmarkResultsEl.hidden) return;
+        const count = bookmarkResultsEl.querySelectorAll('.bookmark-item').length;
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            if (count === 0) return;
+            activeBookmarkIndex = (activeBookmarkIndex + 1) % count;
+            highlightBookmarkItem();
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (count === 0) return;
+            activeBookmarkIndex = (activeBookmarkIndex - 1 + count) % count;
+            highlightBookmarkItem();
+        } else if (event.key === 'Escape') {
+            hideBookmarkResults();
+        }
+    });
+    document.addEventListener('click', (event) => {
+        if (!bookmarkResultsEl.contains(event.target) && event.target !== searchInput) {
+            hideBookmarkResults();
+        }
     });
     toggleLayoutButton.addEventListener('click', () => {
         const isList = document.body.classList.toggle('layout-list');
