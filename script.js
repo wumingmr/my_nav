@@ -200,6 +200,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const webdavSection = document.getElementById('webdav-section');
     const webdavToggle = document.getElementById('webdav-toggle');
     const webdavCollapsedStorageKey = 'navWebdavCollapsed';
+    const webdavRestoreModal = document.getElementById('webdav-restore-modal');
+    const webdavRestoreList = document.getElementById('webdav-restore-list');
+    const webdavRestoreCancel = document.getElementById('webdav-restore-cancel');
     console.log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
     console.log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
     if (!editLinkOrderInput || !editLinkCategorySelect) {
@@ -1151,7 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderLinks();
     }
 
-    function sendWebdavRequest(action, data) {
+    function sendWebdavRequest(action, data, file) {
         return new Promise((resolve) => {
             let done = false;
             const timer = setTimeout(() => {
@@ -1171,7 +1174,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
             document.addEventListener('webdav-sync-result', handler);
             document.dispatchEvent(new CustomEvent('webdav-sync-request', {
-                detail: { action: action, data: data }
+                detail: { action: action, data: data, file: file }
             }));
         });
     }
@@ -1215,11 +1218,71 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!webdavUserInput.value.trim() || !webdavPassInput.value.trim()) {
             if (!saveWebdavCredentials()) return;
         }
-        if (!confirm("从坚果云恢复将覆盖当前所有书签和分类,确定继续?")) return;
+        webdavRestoreButton.disabled = true;
+        webdavRestoreButton.textContent = '☁ 获取列表...';
+        try {
+            // 第一步:列出云端备份文件
+            const listResult = await sendWebdavRequest('list', null);
+            if (!listResult.ok) {
+                alert("❌ " + listResult.message);
+                return;
+            }
+            const files = Array.isArray(listResult.files) ? listResult.files : [];
+            if (files.length === 0) {
+                alert("云端还没有备份文件,请先「备份到坚果云」");
+                return;
+            }
+            renderRestoreList(files);
+            webdavRestoreModal.style.display = 'flex';
+        } finally {
+            webdavRestoreButton.disabled = false;
+            webdavRestoreButton.textContent = '☁ 从坚果云恢复';
+        }
+    });
+
+    // 渲染云端备份列表,点击某一项即恢复
+    function renderRestoreList(files) {
+        webdavRestoreList.innerHTML = '';
+        files.forEach((f) => {
+            const item = document.createElement('div');
+            item.className = 'webdav-restore-item';
+            const name = document.createElement('span');
+            name.className = 'webdav-restore-item-name';
+            name.textContent = f.name || '未知';
+            const meta = document.createElement('span');
+            meta.className = 'webdav-restore-item-meta';
+            const sizeText = f.size ? formatFileSize(f.size) : '';
+            const timeText = f.mtime ? formatRestoreTime(f.mtime) : '';
+            meta.textContent = [timeText, sizeText].filter(Boolean).join(' · ');
+            item.appendChild(name);
+            item.appendChild(meta);
+            item.addEventListener('click', () => performRestore(f.name));
+            webdavRestoreList.appendChild(item);
+        });
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    function formatRestoreTime(mtime) {
+        const d = new Date(mtime);
+        if (isNaN(d.getTime())) return String(mtime);
+        const p = (n) => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+            ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+
+    async function performRestore(fileName) {
+        if (!confirm("从坚果云恢复「" + fileName + "」将覆盖当前所有书签和分类,确定继续?")) return;
+        webdavRestoreModal.style.display = 'none';
+        webdavRestoreList.innerHTML = '';
         webdavRestoreButton.disabled = true;
         webdavRestoreButton.textContent = '☁ 恢复中...';
         try {
-            const result = await sendWebdavRequest('restore', null);
+            const result = await sendWebdavRequest('restore', null, fileName);
             if (!result.ok) {
                 alert("❌ " + result.message);
                 return;
@@ -1227,7 +1290,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const parsed = JSON.parse(result.data);
                 normalizeRestoredData(parsed);
-                alert("✅ " + result.message + ",数据已恢复并刷新");
+                alert("✅ 已恢复备份「" + fileName + "」,数据已刷新");
             } catch (err) {
                 console.error("恢复数据解析失败:", err);
                 alert("❌ 备份数据解析失败:" + err.message);
@@ -1235,6 +1298,17 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             webdavRestoreButton.disabled = false;
             webdavRestoreButton.textContent = '☁ 从坚果云恢复';
+        }
+    }
+
+    webdavRestoreCancel.addEventListener('click', () => {
+        webdavRestoreModal.style.display = 'none';
+        webdavRestoreList.innerHTML = '';
+    });
+    webdavRestoreModal.addEventListener('click', (event) => {
+        if (event.target === webdavRestoreModal) {
+            webdavRestoreModal.style.display = 'none';
+            webdavRestoreList.innerHTML = '';
         }
     });
 

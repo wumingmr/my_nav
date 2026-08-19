@@ -560,6 +560,56 @@ body.layout-list .add-link-button::before {
     min-width: 130px;
 }
 
+/* 恢复备份选择列表 */
+.webdav-restore-list {
+    max-height: 60vh;
+    overflow-y: auto;
+    margin-bottom: var(--gap-medium);
+}
+
+.webdav-restore-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap-small);
+    padding: 10px 12px;
+    border: 1px solid var(--border-color-modal);
+    border-radius: var(--border-radius-medium);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.webdav-restore-item:hover {
+    background-color: #e8e8e8;
+}
+
+.webdav-restore-item-name {
+    font-weight: bold;
+    font-size: var(--small-font-size);
+    word-break: break-all;
+}
+
+.webdav-restore-item-meta {
+    flex-shrink: 0;
+    font-size: var(--smaller-font-size);
+    color: #777;
+    text-align: right;
+}
+
+.webdav-restore-loading,
+.webdav-restore-empty,
+.webdav-restore-error {
+    padding: 15px;
+    text-align: center;
+    color: #777;
+    font-size: var(--small-font-size);
+}
+
+.webdav-restore-error {
+    color: #c00;
+}
+
 
 @media (max-width: 600px) {
     body {

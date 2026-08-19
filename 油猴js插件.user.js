@@ -44,19 +44,28 @@
         // 账号密码存在 localStorage(navWebdavUser / navWebdavPass)。
         // ===================================================================
         const NUTSTORE_DAV_ROOT = "https://dav.jianguoyun.com/dav/my_nav_backup/";
-        const NUTSTORE_BACKUP_FILE = "nav.json";
 
         function b64Encode(str) {
             // 兼容非 ASCII 账号(坚果云账号通常为邮箱,保险起见)
             return btoa(unescape(encodeURIComponent(str)));
         }
 
-        function webdavRequest(method, url, body, auth) {
+        function timestampFileName() {
+            const d = new Date();
+            const p = (n) => String(n).padStart(2, "0");
+            return "nav-" + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) +
+                "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ".json";
+        }
+
+        function webdavRequest(method, url, body, auth, extraHeaders) {
+            const headers = {};
+            if (auth) headers["Authorization"] = "Basic " + b64Encode(auth);
+            if (extraHeaders) Object.assign(headers, extraHeaders);
             return new Promise((resolve, reject) => {
                 GM_xmlhttpRequest({
                     method: method,
                     url: url,
-                    headers: auth ? { "Authorization": "Basic " + b64Encode(auth) } : {},
+                    headers: headers,
                     data: body,
                     onload: (resp) => resolve(resp),
                     onerror: (err) => reject(new Error("网络错误: " + (err.error || "无法连接")))
@@ -74,22 +83,61 @@
             if (mkcol.status !== 201 && mkcol.status !== 200 && mkcol.status !== 405 && mkcol.status !== 301) {
                 throw new Error("创建目录失败 (HTTP " + mkcol.status + ")");
             }
-            const put = await webdavRequest("PUT", NUTSTORE_DAV_ROOT + NUTSTORE_BACKUP_FILE, dataJson, auth);
+            const fileName = timestampFileName();
+            const put = await webdavRequest("PUT", NUTSTORE_DAV_ROOT + fileName, dataJson, auth);
             if (put.status === 401) {
                 throw new Error("认证失败(401),请检查账号/应用密码");
             }
             if (put.status !== 201 && put.status !== 204 && put.status !== 200) {
                 throw new Error("上传失败 (HTTP " + put.status + ")");
             }
+            return fileName;
         }
 
-        async function webdavRestore(user, pass) {
-            const get = await webdavRequest("GET", NUTSTORE_DAV_ROOT + NUTSTORE_BACKUP_FILE, null, user + ":" + pass);
+        async function webdavList(user, pass) {
+            const resp = await webdavRequest("PROPFIND", NUTSTORE_DAV_ROOT, null,
+                user + ":" + pass, { "Depth": "1" });
+            if (resp.status === 401) {
+                throw new Error("认证失败(401),请检查账号/应用密码");
+            }
+            if (resp.status !== 207) {
+                throw new Error("列出备份失败 (HTTP " + resp.status + ")");
+            }
+            // 解析 PROPFIND 返回的 XML(兼容 d:/D: 前缀)
+            const files = [];
+            try {
+                const doc = new DOMParser().parseFromString(resp.responseText, "text/xml");
+                const responses = doc.getElementsByTagNameNS("*", "response");
+                for (const r of responses) {
+                    const hrefEl = r.getElementsByTagNameNS("*", "href")[0];
+                    if (!hrefEl) continue;
+                    const href = decodeURIComponent(hrefEl.textContent || "");
+                    if (href.endsWith("/")) continue; // 目录项,跳过
+                    const name = href.split("/").pop();
+                    if (!name || !name.endsWith(".json")) continue;
+                    const lenEl = r.getElementsByTagNameNS("*", "getcontentlength")[0];
+                    const mtEl = r.getElementsByTagNameNS("*", "getlastmodified")[0];
+                    files.push({
+                        name: name,
+                        size: lenEl ? (parseInt(lenEl.textContent, 10) || 0) : 0,
+                        mtime: mtEl ? (mtEl.textContent || "") : ""
+                    });
+                }
+            } catch (e) {
+                throw new Error("解析备份列表失败: " + e.message);
+            }
+            // 按修改时间降序(最新在前)
+            files.sort((a, b) => (a.mtime < b.mtime ? 1 : a.mtime > b.mtime ? -1 : 0));
+            return files;
+        }
+
+        async function webdavRestore(user, pass, fileName) {
+            const get = await webdavRequest("GET", NUTSTORE_DAV_ROOT + fileName, null, user + ":" + pass);
             if (get.status === 401) {
                 throw new Error("认证失败(401),请检查账号/应用密码");
             }
             if (get.status !== 200) {
-                throw new Error("下载失败 (HTTP " + get.status + ", 云端可能还没有备份)");
+                throw new Error("下载失败 (HTTP " + get.status + ", 云端可能没有该备份)");
             }
             return get.responseText;
         }
@@ -107,11 +155,16 @@
             }
             try {
                 if (detail.action === "backup") {
-                    await webdavBackup(detail.data, user, pass);
-                    reply({ action: "backup", ok: true, message: "已备份到坚果云 my_nav_backup/nav.json" });
+                    const fileName = await webdavBackup(detail.data, user, pass);
+                    reply({ action: "backup", ok: true, message: "已备份到坚果云: " + fileName, fileName: fileName });
+                } else if (detail.action === "list") {
+                    const files = await webdavList(user, pass);
+                    reply({ action: "list", ok: true, files: files });
                 } else if (detail.action === "restore") {
-                    const data = await webdavRestore(user, pass);
-                    reply({ action: "restore", ok: true, message: "已从坚果云下载备份", data: data });
+                    const fileName = detail.file || "";
+                    if (!fileName) throw new Error("未指定要恢复的备份文件");
+                    const data = await webdavRestore(user, pass, fileName);
+                    reply({ action: "restore", ok: true, message: "已下载备份: " + fileName, data: data, fileName: fileName });
                 } else {
                     reply({ action: detail.action, ok: false, message: "未知操作: " + detail.action });
                 }
