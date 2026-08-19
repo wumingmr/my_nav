@@ -189,6 +189,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchEngineSelect = document.getElementById('search-engine-select');
     const searchInput = document.getElementById('search-input');
     const bookmarkResultsEl = document.getElementById('bookmark-results');
+    const webdavUserInput = document.getElementById('webdav-user');
+    const webdavPassInput = document.getElementById('webdav-pass');
+    const webdavShowPassCheck = document.getElementById('webdav-showpass');
+    const webdavSaveButton = document.getElementById('webdav-save-button');
+    const webdavBackupButton = document.getElementById('webdav-backup-button');
+    const webdavRestoreButton = document.getElementById('webdav-restore-button');
+    const webdavStorageUserKey = 'navWebdavUser';
+    const webdavStoragePassKey = 'navWebdavPass';
     console.log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
     console.log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
     if (!editLinkOrderInput || !editLinkCategorySelect) {
@@ -1049,6 +1057,172 @@ document.addEventListener('DOMContentLoaded', () => {
     importButton.addEventListener('click', () => {
         importInput.click(); // 点击“导入”按钮时，触发隐藏的文件输入框
     });
+
+    /* ===== 坚果云 WebDAV 备份/恢复 =====
+     * 页面与油猴脚本通过自定义事件通信:
+     *   页面派发 webdav-sync-request  → 油猴脚本执行 WebDAV 请求(绕过 CORS)
+     *   油猴脚本派发 webdav-sync-result → 页面处理结果
+     */
+    const WEBDAV_TIMEOUT = 20000; // 20s 未收到油猴响应视为失败
+
+    function loadWebdavCredentials() {
+        const savedUser = localStorage.getItem(webdavStorageUserKey);
+        const savedPass = localStorage.getItem(webdavStoragePassKey);
+        if (savedUser) webdavUserInput.value = savedUser;
+        if (savedPass) webdavPassInput.value = savedPass;
+    }
+
+    function saveWebdavCredentials() {
+        const user = webdavUserInput.value.trim();
+        const pass = webdavPassInput.value.trim();
+        if (!user || !pass) {
+            alert("请填写账号和应用密码");
+            return false;
+        }
+        try {
+            localStorage.setItem(webdavStorageUserKey, user);
+            localStorage.setItem(webdavStoragePassKey, pass);
+            alert("账号已保存(仅保存在本机浏览器 localStorage)");
+            return true;
+        } catch (e) {
+            console.error("保存坚果云账号失败:", e);
+            alert("保存失败:" + e.message);
+            return false;
+        }
+    }
+
+    function buildWebdavBackupData() {
+        const layout = localStorage.getItem(layoutStorageKey) || 'grid';
+        return {
+            version: 4,
+            layout: layout,
+            order: categoryDisplayOrder,
+            sortOrders: categorySortData,
+            links: linksData
+        };
+    }
+
+    function normalizeRestoredData(parsed) {
+        // 规范化恢复的数据(参考导入逻辑)
+        if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.links)) {
+            throw new Error("备份文件格式无效");
+        }
+        let lnk = parsed.links;
+        let ord = Array.isArray(parsed.order) ? parsed.order.slice() : [];
+        let srt = (parsed.sortOrders && typeof parsed.sortOrders === 'object' && !Array.isArray(parsed.sortOrders))
+            ? parsed.sortOrders : {};
+        if (parsed.version !== 4 || Object.keys(srt).length === 0) {
+            srt = {};
+            ord.forEach((c, i) => { srt[c] = (i + 1) * 10; });
+        }
+        linksData = lnk;
+        categoryDisplayOrder = ord;
+        categorySortData = srt;
+        if (parsed.layout === 'list' || parsed.layout === 'grid') {
+            localStorage.setItem(layoutStorageKey, parsed.layout);
+        }
+        const nb = Date.now();
+        linksData.forEach((l, i) => {
+            if (!l.id) l.id = generateUniqueId();
+            if (typeof l.category !== 'string') l.category = '未分类';
+            if (typeof l.sortOrder !== 'number') l.sortOrder = nb + i;
+            if (!categoryDisplayOrder.includes(l.category)) {
+                categoryDisplayOrder.push(l.category);
+                categorySortData[l.category] = (categoryDisplayOrder.length) * 10;
+            }
+        });
+        categoryDisplayOrder = categoryDisplayOrder.filter(c => typeof c === 'string');
+        const fs = {};
+        categoryDisplayOrder.forEach((c, i) => {
+            if (typeof categorySortData[c] !== 'number') {
+                fs[c] = (i + 1) * 10;
+            } else {
+                fs[c] = categorySortData[c];
+            }
+        });
+        categorySortData = fs;
+        saveLinks();
+        saveCategoryOrder();
+        saveCategorySortOrders();
+        applyLayoutPreference();
+        renderLinks();
+    }
+
+    function sendWebdavRequest(action, data) {
+        return new Promise((resolve) => {
+            let done = false;
+            const timer = setTimeout(() => {
+                if (!done) {
+                    done = true;
+                    resolve({ ok: false, message: "未收到油猴脚本响应,请确认已安装并更新油猴插件,且允许其访问本页面" });
+                }
+            }, WEBDAV_TIMEOUT);
+            const handler = (e) => {
+                const detail = e.detail || {};
+                if (detail.action !== action) return;
+                if (done) return;
+                done = true;
+                clearTimeout(timer);
+                document.removeEventListener('webdav-sync-result', handler);
+                resolve(detail);
+            };
+            document.addEventListener('webdav-sync-result', handler);
+            document.dispatchEvent(new CustomEvent('webdav-sync-request', {
+                detail: { action: action, data: data }
+            }));
+        });
+    }
+
+    webdavShowPassCheck.addEventListener('change', () => {
+        webdavPassInput.type = webdavShowPassCheck.checked ? 'text' : 'password';
+    });
+
+    webdavSaveButton.addEventListener('click', saveWebdavCredentials);
+
+    webdavBackupButton.addEventListener('click', async () => {
+        if (!webdavUserInput.value.trim() || !webdavPassInput.value.trim()) {
+            if (!saveWebdavCredentials()) return;
+        }
+        webdavBackupButton.disabled = true;
+        webdavBackupButton.textContent = '☁ 备份中...';
+        try {
+            const data = JSON.stringify(buildWebdavBackupData(), null, 2);
+            const result = await sendWebdavRequest('backup', data);
+            alert(result.ok ? ("✅ " + result.message) : ("❌ " + result.message));
+        } finally {
+            webdavBackupButton.disabled = false;
+            webdavBackupButton.textContent = '☁ 备份到坚果云';
+        }
+    });
+
+    webdavRestoreButton.addEventListener('click', async () => {
+        if (!webdavUserInput.value.trim() || !webdavPassInput.value.trim()) {
+            if (!saveWebdavCredentials()) return;
+        }
+        if (!confirm("从坚果云恢复将覆盖当前所有书签和分类,确定继续?")) return;
+        webdavRestoreButton.disabled = true;
+        webdavRestoreButton.textContent = '☁ 恢复中...';
+        try {
+            const result = await sendWebdavRequest('restore', null);
+            if (!result.ok) {
+                alert("❌ " + result.message);
+                return;
+            }
+            try {
+                const parsed = JSON.parse(result.data);
+                normalizeRestoredData(parsed);
+                alert("✅ " + result.message + ",数据已恢复并刷新");
+            } catch (err) {
+                console.error("恢复数据解析失败:", err);
+                alert("❌ 备份数据解析失败:" + err.message);
+            }
+        } finally {
+            webdavRestoreButton.disabled = false;
+            webdavRestoreButton.textContent = '☁ 从坚果云恢复';
+        }
+    });
+
+    loadWebdavCredentials();
 
     function processUrlHashData() {
 

@@ -10,6 +10,7 @@
 // @grant        GM_getValue
 // @grant        GM_openInTab
 // @grant        GM_addStyle
+// @grant        GM_xmlhttpRequest
 // ==/UserScript==
 
 (function() {
@@ -35,6 +36,89 @@
             }
         };
         syncToStorage();
+        // ===================================================================
+        // 逻辑 A2：WebDAV 坚果云备份/恢复
+        // 页面点击「备份/恢复」→ 派发 webdav-sync-request 事件 →
+        // 这里用 GM_xmlhttpRequest 执行 WebDAV 请求(绕过 CORS)→
+        // 派发 webdav-sync-result 事件回传结果给页面。
+        // 账号密码存在 localStorage(navWebdavUser / navWebdavPass)。
+        // ===================================================================
+        const NUTSTORE_DAV_ROOT = "https://dav.jianguoyun.com/dav/my_nav_backup/";
+        const NUTSTORE_BACKUP_FILE = "nav.json";
+
+        function b64Encode(str) {
+            // 兼容非 ASCII 账号(坚果云账号通常为邮箱,保险起见)
+            return btoa(unescape(encodeURIComponent(str)));
+        }
+
+        function webdavRequest(method, url, body, auth) {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: method,
+                    url: url,
+                    headers: auth ? { "Authorization": "Basic " + b64Encode(auth) } : {},
+                    data: body,
+                    onload: (resp) => resolve(resp),
+                    onerror: (err) => reject(new Error("网络错误: " + (err.error || "无法连接")))
+                });
+            });
+        }
+
+        async function webdavBackup(dataJson, user, pass) {
+            const auth = user + ":" + pass;
+            // 确保云端目录存在 (MKCOL;已存在返回 405/301 等也视为成功)
+            const mkcol = await webdavRequest("MKCOL", NUTSTORE_DAV_ROOT, null, auth);
+            if (mkcol.status === 401) {
+                throw new Error("认证失败(401),请检查账号/应用密码");
+            }
+            if (mkcol.status !== 201 && mkcol.status !== 200 && mkcol.status !== 405 && mkcol.status !== 301) {
+                throw new Error("创建目录失败 (HTTP " + mkcol.status + ")");
+            }
+            const put = await webdavRequest("PUT", NUTSTORE_DAV_ROOT + NUTSTORE_BACKUP_FILE, dataJson, auth);
+            if (put.status === 401) {
+                throw new Error("认证失败(401),请检查账号/应用密码");
+            }
+            if (put.status !== 201 && put.status !== 204 && put.status !== 200) {
+                throw new Error("上传失败 (HTTP " + put.status + ")");
+            }
+        }
+
+        async function webdavRestore(user, pass) {
+            const get = await webdavRequest("GET", NUTSTORE_DAV_ROOT + NUTSTORE_BACKUP_FILE, null, user + ":" + pass);
+            if (get.status === 401) {
+                throw new Error("认证失败(401),请检查账号/应用密码");
+            }
+            if (get.status !== 200) {
+                throw new Error("下载失败 (HTTP " + get.status + ", 云端可能还没有备份)");
+            }
+            return get.responseText;
+        }
+
+        document.addEventListener("webdav-sync-request", async (e) => {
+            const detail = e.detail || {};
+            const user = (localStorage.getItem("navWebdavUser") || "").trim();
+            const pass = (localStorage.getItem("navWebdavPass") || "").trim();
+            const reply = (payload) => {
+                document.dispatchEvent(new CustomEvent("webdav-sync-result", { detail: payload }));
+            };
+            if (!user || !pass) {
+                reply({ action: detail.action, ok: false, message: "请先在「设置-坚果云备份」中填写账号与应用密码" });
+                return;
+            }
+            try {
+                if (detail.action === "backup") {
+                    await webdavBackup(detail.data, user, pass);
+                    reply({ action: "backup", ok: true, message: "已备份到坚果云 my_nav_backup/nav.json" });
+                } else if (detail.action === "restore") {
+                    const data = await webdavRestore(user, pass);
+                    reply({ action: "restore", ok: true, message: "已从坚果云下载备份", data: data });
+                } else {
+                    reply({ action: detail.action, ok: false, message: "未知操作: " + detail.action });
+                }
+            } catch (err) {
+                reply({ action: detail.action, ok: false, message: "同步失败: " + err.message });
+            }
+        });
         return; 
     }
 

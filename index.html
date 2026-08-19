@@ -23,7 +23,22 @@
             <hr>
             <label for="bg-upload">更换背景:</label>
             <input type="file" id="bg-upload" accept="image/*">
-            <button id="clear-bg-button" class="control-button small-button">清除背景</button>            
+            <button id="clear-bg-button" class="control-button small-button">清除背景</button>
+            <hr>
+            <div class="webdav-section">
+                <h3>坚果云备份</h3>
+                <p class="webdav-tip">在坚果云网页版「账户信息 → 安全选项」生成<strong>应用密码</strong>,勿用登录密码</p>
+                <label for="webdav-user">账号(邮箱):</label>
+                <input type="text" id="webdav-user" placeholder="yourname@example.com" autocomplete="off">
+                <label for="webdav-pass">应用密码:</label>
+                <input type="password" id="webdav-pass" placeholder="应用密码" autocomplete="off">
+                <label class="webdav-showpass"><input type="checkbox" id="webdav-showpass"> 显示密码</label>
+                <button id="webdav-save-button" class="control-button">保存账号</button>
+                <div class="webdav-actions">
+                    <button id="webdav-backup-button" class="control-button">☁ 备份到坚果云</button>
+                    <button id="webdav-restore-button" class="control-button">☁ 从坚果云恢复</button>
+                </div>
+            </div>
         </div>
     </div> <div id="edit-modal" class="modal">
         <div class="modal-content">

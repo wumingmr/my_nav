@@ -469,6 +469,67 @@ body.layout-list .add-link-button::before {
     font-size: var(--smaller-font-size);
 }
 
+/* 坚果云备份区块 */
+.webdav-section {
+    text-align: left;
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: var(--border-radius-medium);
+    padding: var(--small-padding);
+    margin-top: var(--small-padding);
+}
+
+.webdav-section h3 {
+    margin: 0 0 var(--gap-small) 0;
+    font-size: var(--base-font-size);
+}
+
+.webdav-tip {
+    margin: 0 0 var(--gap-small) 0;
+    font-size: var(--smaller-font-size);
+    color: var(--text-color-placeholder);
+    line-height: 1.5;
+}
+
+.webdav-section label {
+    display: inline-block;
+    min-width: 110px;
+    margin: var(--gap-small) 0;
+    font-size: var(--small-font-size);
+}
+
+.webdav-section input[type="text"],
+.webdav-section input[type="password"] {
+    width: calc(100% - 130px);
+    max-width: 320px;
+    padding: var(--input-padding-vertical) var(--input-padding-horizontal);
+    border: 1px solid var(--input-border-color);
+    background-color: var(--input-bg);
+    color: var(--text-color);
+    border-radius: var(--border-radius-medium);
+    font-size: var(--small-font-size);
+    box-sizing: border-box;
+}
+
+.webdav-showpass {
+    display: block !important;
+    margin-top: var(--gap-small) !important;
+    font-size: var(--smaller-font-size) !important;
+}
+
+.webdav-showpass input {
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.webdav-actions {
+    margin-top: var(--gap-small);
+    text-align: center;
+}
+
+.webdav-actions .control-button {
+    min-width: 130px;
+}
+
 
 @media (max-width: 600px) {
     body {
