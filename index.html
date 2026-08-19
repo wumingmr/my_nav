@@ -25,8 +25,11 @@
             <input type="file" id="bg-upload" accept="image/*">
             <button id="clear-bg-button" class="control-button small-button">清除背景</button>
             <hr>
-            <div class="webdav-section">
-                <h3>坚果云备份</h3>
+            <div class="webdav-section" id="webdav-section">
+                <button type="button" class="webdav-toggle" id="webdav-toggle" aria-expanded="true">
+                    <span class="webdav-toggle-arrow">▾</span> 坚果云备份
+                </button>
+                <div class="webdav-body" id="webdav-body">
                 <p class="webdav-tip">在坚果云网页版「账户信息 → 安全选项」生成<strong>应用密码</strong>,勿用登录密码</p>
                 <label for="webdav-user">账号(邮箱):</label>
                 <input type="text" id="webdav-user" placeholder="yourname@example.com" autocomplete="off">
@@ -37,6 +40,7 @@
                 <div class="webdav-actions">
                     <button id="webdav-backup-button" class="control-button">☁ 备份到坚果云</button>
                     <button id="webdav-restore-button" class="control-button">☁ 从坚果云恢复</button>
+                </div>
                 </div>
             </div>
         </div>

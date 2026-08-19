@@ -478,6 +478,36 @@ body.layout-list .add-link-button::before {
     margin-top: var(--small-padding);
 }
 
+.webdav-toggle {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-small);
+    width: 100%;
+    padding: 4px 0;
+    border: none;
+    background: none;
+    color: var(--text-color);
+    font-size: var(--base-font-size);
+    font-weight: bold;
+    cursor: pointer;
+    text-align: left;
+}
+
+.webdav-toggle-arrow {
+    display: inline-block;
+    transition: transform 0.2s ease;
+    font-size: var(--smaller-font-size);
+    color: var(--text-color-placeholder);
+}
+
+.webdav-section.webdav-collapsed .webdav-toggle-arrow {
+    transform: rotate(-90deg);
+}
+
+.webdav-section.webdav-collapsed .webdav-body {
+    display: none;
+}
+
 .webdav-section h3 {
     margin: 0 0 var(--gap-small) 0;
     font-size: var(--base-font-size);

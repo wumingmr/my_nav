@@ -197,6 +197,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const webdavRestoreButton = document.getElementById('webdav-restore-button');
     const webdavStorageUserKey = 'navWebdavUser';
     const webdavStoragePassKey = 'navWebdavPass';
+    const webdavSection = document.getElementById('webdav-section');
+    const webdavToggle = document.getElementById('webdav-toggle');
+    const webdavCollapsedStorageKey = 'navWebdavCollapsed';
     console.log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
     console.log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
     if (!editLinkOrderInput || !editLinkCategorySelect) {
@@ -1173,6 +1176,19 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    /* 折叠/展开坚果云区块(记忆状态) */
+    function applyWebdavCollapsed() {
+        const collapsed = localStorage.getItem(webdavCollapsedStorageKey) === 'true';
+        webdavSection.classList.toggle('webdav-collapsed', collapsed);
+        webdavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    }
+
+    webdavToggle.addEventListener('click', () => {
+        const collapsed = webdavSection.classList.toggle('webdav-collapsed');
+        webdavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+        localStorage.setItem(webdavCollapsedStorageKey, String(collapsed));
+    });
+
     webdavShowPassCheck.addEventListener('change', () => {
         webdavPassInput.type = webdavShowPassCheck.checked ? 'text' : 'password';
     });
@@ -1222,6 +1238,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    applyWebdavCollapsed();
     loadWebdavCredentials();
 
     function processUrlHashData() {
