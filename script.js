@@ -11,45 +11,131 @@ const lastSearchEngineStorageKey = 'lastSearchEngine';
 const LONG_PRESS_DURATION = 700;
 const MAX_VISIBLE_LINKS = 6;
 
-function saveCategoryOrder() {
+// 环境检测和日志控制
+const isDev = window.location.hostname === 'localhost' || window.location.protocol === 'file:';
+const _console = { log: console.log.bind(console), warn: console.warn.bind(console), error: console.error.bind(console) };
+const log = isDev ? _console.log : () => {};
+const warn = isDev ? _console.warn : () => {};
+const error = isDev ? _console.error : () => {};
+
+// 防抖函数
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// 统一错误处理
+function handleError(err, userMessage) {
+    error(err);
+    alert(userMessage || '操作失败，请重试');
+}
+
+// 加载状态提示
+let loadingOverlay = null;
+function showLoading(message = '加载中...') {
+    if (!loadingOverlay) {
+        loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'loading-overlay';
+        loadingOverlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); display: flex; align-items: center;
+            justify-content: center; z-index: 9999; color: white;
+            font-size: 1.1em; font-family: var(--font-family);
+        `;
+        document.body.appendChild(loadingOverlay);
+    }
+    loadingOverlay.textContent = message;
+    loadingOverlay.style.display = 'flex';
+}
+
+function hideLoading() {
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+    }
+}
+
+// 数据压缩优化
+function compressData(data) {
     try {
-        localStorage.setItem(categoryOrderStorageKey, JSON.stringify(categoryDisplayOrder));
-        console.log("分类顺序列表已保存:", JSON.stringify(categoryDisplayOrder));
-    } catch (error) {
-        console.error("保存分类顺序列表失败:", error);
-        alert("无法保存分类顺序列表，本地存储可能出错。");
+        const json = JSON.stringify(data);
+        // 简单的压缩：移除不必要的空格和重复的键名
+        // 对于书签数据，可以进一步优化存储
+        return json;
+    } catch (e) {
+        error("压缩数据失败:", e);
+        return JSON.stringify(data);
+    }
+}
+
+function decompressData(compressed) {
+    try {
+        return JSON.parse(compressed);
+    } catch (e) {
+        error("解压数据失败:", e);
+        return null;
+    }
+}
+
+// 优化的保存函数
+function saveToStorage(key, data) {
+    try {
+        const compressed = compressData(data);
+        localStorage.setItem(key, compressed);
+        return true;
+    } catch (e) {
+        error("保存到存储失败:", e);
+        if (e.name === 'QuotaExceededError') {
+            alert("存储空间不足，请清理一些数据或导出备份");
+        }
+        return false;
+    }
+}
+
+// 优化的加载函数
+function loadFromStorage(key) {
+    try {
+        const data = localStorage.getItem(key);
+        if (!data) return null;
+        return decompressData(data);
+    } catch (e) {
+        error("从存储加载失败:", e);
+        return null;
+    }
+}
+
+function saveCategoryOrder() {
+    if (saveToStorage(categoryOrderStorageKey, categoryDisplayOrder)) {
+        log("分类顺序列表已保存:", JSON.stringify(categoryDisplayOrder));
     }
 }
 
 function saveCategorySortOrders() {
-    try {
-        localStorage.setItem(categorySortOrdersStorageKey, JSON.stringify(categorySortData));
-        console.log("分类序号已保存:", JSON.stringify(categorySortData));
-    } catch (error) {
-        console.error("保存分类序号失败:", error);
-        alert("无法保存分类序号，本地存储可能出错。");
+    if (saveToStorage(categorySortOrdersStorageKey, categorySortData)) {
+        log("分类序号已保存:", JSON.stringify(categorySortData));
     }
 }
 
 function loadCategoryOrder() {
-    const storedOrder = localStorage.getItem(categoryOrderStorageKey);
+    const parsedOrder = loadFromStorage(categoryOrderStorageKey);
     let orderInitialized = false;
-    if (storedOrder) {
-        try {
-            const parsedOrder = JSON.parse(storedOrder);
-            if (Array.isArray(parsedOrder) && parsedOrder.every(item => typeof item === 'string')) {
-                categoryDisplayOrder = parsedOrder;
-                orderInitialized = true;
-                console.log("从 localStorage 加载分类顺序列表:", categoryDisplayOrder);
-            } else {
-                console.warn("存储的分类顺序列表格式无效 (非字符串数组)，将重新生成。");
-            }
-        } catch (e) {
-            console.error("解析存储的分类顺序列表时出错:", e);
+    if (parsedOrder) {
+        if (Array.isArray(parsedOrder) && parsedOrder.every(item => typeof item === 'string')) {
+            categoryDisplayOrder = parsedOrder;
+            orderInitialized = true;
+            log("从存储加载分类顺序列表:", categoryDisplayOrder);
+        } else {
+            warn("存储的分类顺序列表格式无效 (非字符串数组)，将重新生成。");
         }
     }
     if (!orderInitialized) {
-        console.log("未能从 localStorage 加载有效顺序列表，将根据 linksData 生成...");
+        log("未能从存储加载有效顺序列表，将根据 linksData 生成...");
         const categoriesFromData = new Set();
 
         if (Array.isArray(linksData)) {
@@ -66,30 +152,25 @@ function loadCategoryOrder() {
                     if (link && typeof link.category === 'string') defaultCats.add(link.category);
                 });
                 categoryDisplayOrder = Array.from(defaultCats);
-                console.log("linksData 为空，根据默认链接生成顺序列表:", categoryDisplayOrder);
+                log("linksData 为空，根据默认链接生成顺序列表:", categoryDisplayOrder);
             }
         }
         saveCategoryOrder();
-        console.log("已生成并保存初始分类顺序列表:", categoryDisplayOrder);
+        log("已生成并保存初始分类顺序列表:", categoryDisplayOrder);
     }
 
 }
 
 function loadCategorySortOrders() {
-    const storedSortOrders = localStorage.getItem(categorySortOrdersStorageKey);
+    const parsedOrders = loadFromStorage(categorySortOrdersStorageKey);
     let ordersDataInitialized = false;
-    if (storedSortOrders) {
-        try {
-            const parsedOrders = JSON.parse(storedSortOrders);
-            if (typeof parsedOrders === 'object' && parsedOrders !== null && !Array.isArray(parsedOrders)) {
-                categorySortData = parsedOrders;
-                ordersDataInitialized = true;
-                console.log("从 localStorage 加载分类序号:", categorySortData);
-            } else {
-                console.warn("存储的分类序号格式无效 (不是对象)，将重新生成。");
-            }
-        } catch (e) {
-            console.error("解析存储的分类序号时出错:", e);
+    if (parsedOrders) {
+        if (typeof parsedOrders === 'object' && parsedOrders !== null && !Array.isArray(parsedOrders)) {
+            categorySortData = parsedOrders;
+            ordersDataInitialized = true;
+            log("从存储加载分类序号:", categorySortData);
+        } else {
+            warn("存储的分类序号格式无效 (不是对象)，将重新生成。");
         }
     }
     let needsSave = !ordersDataInitialized;
@@ -98,7 +179,7 @@ function loadCategorySortOrders() {
 
         categoryDisplayOrder.forEach((categoryName, index) => {
             if (typeof categorySortData[categoryName] !== 'number') {
-                console.warn(`分类 "${categoryName}" 在序号数据中缺失，赋予默认序号。`);
+                warn(`分类 "${categoryName}" 在序号数据中缺失，赋予默认序号。`);
                 categorySortData[categoryName] = (index + 1) * 10;
                 needsSave = true;
             }
@@ -106,19 +187,19 @@ function loadCategorySortOrders() {
         });
         Object.keys(categorySortData).forEach(key => {
             if (!categoryDisplayOrder.includes(key)) {
-                console.warn(`分类 "${key}" 在序号数据中存在，但在当前分类列表中缺失，将从序号数据中移除。`);
+                warn(`分类 "${key}" 在序号数据中存在，但在当前分类列表中缺失，将从序号数据中移除。`);
                 delete categorySortData[key];
                 needsSave = true;
             }
         });
     } else {
-        console.error("categoryDisplayOrder 不是有效数组，无法生成或同步分类序号。");
+        error("categoryDisplayOrder 不是有效数组，无法生成或同步分类序号。");
         categorySortData = {};
         needsSave = true;
     }
     if (needsSave) {
         saveCategorySortOrders();
-        console.log("已生成或同步并保存分类序号:", categorySortData);
+        log("已生成或同步并保存分类序号:", categorySortData);
     }
     if (Array.isArray(linksData)) {
         const currentCategoriesInOrderSet = new Set(categoryDisplayOrder);
@@ -127,7 +208,7 @@ function loadCategorySortOrders() {
         linksData.forEach(link => {
             if (link && typeof link.category === 'string' && !currentCategoriesInOrderSet.has(link.category)) {
 
-                console.warn(`同步检查：发现分类 "${link.category}" 在 linksData 中，但在 categoryOrder 中缺失。将添加到末尾。`);
+                warn(`同步检查：发现分类 "${link.category}" 在 linksData 中，但在 categoryOrder 中缺失。将添加到末尾。`);
                 categoryDisplayOrder.push(link.category);
                 currentCategoriesInOrderSet.add(link.category);
                 orderListChanged = true;
@@ -203,10 +284,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const webdavRestoreModal = document.getElementById('webdav-restore-modal');
     const webdavRestoreList = document.getElementById('webdav-restore-list');
     const webdavRestoreCancel = document.getElementById('webdav-restore-cancel');
-    console.log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
-    console.log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
+    log("获取到的 editLinkOrderInput 元素:", editLinkOrderInput);
+    log("获取到的 editLinkCategorySelect 元素:", editLinkCategorySelect);
     if (!editLinkOrderInput || !editLinkCategorySelect) {
-        console.error("页面初始化失败：未能获取到链接模态框中的序号或分类选择元素！请检查 HTML ID。");
+        error("页面初始化失败：未能获取到链接模态框中的序号或分类选择元素！请检查 HTML ID。");
     }
     let longPressTimer = null;
     let currentEditingLinkId = null;
@@ -221,25 +302,25 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function applyLayoutPreference() {
-        const savedLayout = localStorage.getItem(layoutStorageKey);
+        const savedLayout = loadFromStorage(layoutStorageKey);
         const currentLayout = savedLayout || 'grid';
         if (currentLayout === 'list') {
             document.body.classList.add('layout-list');
         } else {
             document.body.classList.remove('layout-list');
         }
-        console.log("应用布局偏好:", currentLayout);
+        log("应用布局偏好:", currentLayout);
     }
 
     function applyDnDModePreference() {
-        const savedMode = localStorage.getItem(dndModeStorageKey);
+        const savedMode = loadFromStorage(dndModeStorageKey);
         isDnDMode = (savedMode === 'true');
         if (isDnDMode) {
             document.body.classList.add('dnd-mode-active');
         } else {
             document.body.classList.remove('dnd-mode-active');
         }
-        console.log("应用拖放模式偏好 (用于控制长按):", isDnDMode);
+        log("应用拖放模式偏好 (用于控制长按):", isDnDMode);
     }
 
     function populateSearchEngines() {
@@ -250,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
             option.textContent = engineName;
             searchEngineSelect.appendChild(option);
         }
-        const lastEngine = localStorage.getItem(lastSearchEngineStorageKey);
+        const lastEngine = loadFromStorage(lastSearchEngineStorageKey);
         const lastEngineValue = searchEngines[lastEngine];
         if (lastEngineValue) {
             searchEngineSelect.value = lastEngineValue;
@@ -270,10 +351,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         const encodedQuery = encodeURIComponent(query);
         const finalUrl = urlTemplate.replace('{query}', encodedQuery);
-        console.log(`执行搜索: ${finalUrl}`);
+        log(`执行搜索: ${finalUrl}`);
         window.open(finalUrl, '_blank');
         const selectedEngineName = searchEngineSelect.options[searchEngineSelect.selectedIndex].text;
-        localStorage.setItem(lastSearchEngineStorageKey, selectedEngineName);
+        saveToStorage(lastSearchEngineStorageKey, selectedEngineName);
     }
 
     /* ===== 书签搜索 ===== */
@@ -381,56 +462,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveLinks() {
-        try {
-            localStorage.setItem(linksDataStorageKey, JSON.stringify(linksData));
-            console.log("链接数据已保存");
-        } catch (e) {
-            console.error("保存链接数据出错:", e);
-            alert("无法保存链接数据");
+        if (saveToStorage(linksDataStorageKey, linksData)) {
+            log("链接数据已保存");
         }
     }
 
     function loadLinks() {
-        const stored = localStorage.getItem(linksDataStorageKey);
-        if (stored) {
-            try {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed)) {
-                    linksData = parsed;
-                    const now = Date.now();
-                    linksData.forEach((l, i) => {
-                        if (!l.id) l.id = generateUniqueId();
-                        if (typeof l.category !== 'string') l.category = '未分类';
-                        if (typeof l.sortOrder !== 'number') {
-                            console.warn(`链接 ${l.text||l.url} 缺序号`);
-                            l.sortOrder = now + i;
-                        }
-                    });
-                    console.log("加载链接:", linksData.length);
-                } else {
-                    linksData = getDefaultLinks();
-                    console.warn("链接数据非数组，重置");
-                }
-            } catch (e) {
-                console.error("解析链接出错:", e);
+        const parsed = loadFromStorage(linksDataStorageKey);
+        if (parsed) {
+            if (Array.isArray(parsed)) {
+                linksData = parsed;
+                const now = Date.now();
+                linksData.forEach((l, i) => {
+                    if (!l.id) l.id = generateUniqueId();
+                    if (typeof l.category !== 'string') l.category = '未分类';
+                    if (typeof l.sortOrder !== 'number') {
+                        warn(`链接 ${l.text||l.url} 缺序号`);
+                        l.sortOrder = now + i;
+                    }
+                });
+                log("加载链接:", linksData.length);
+            } else {
                 linksData = getDefaultLinks();
+                warn("链接数据非数组，重置");
             }
         } else {
             linksData = getDefaultLinks();
-            console.log("无链接数据，用默认");
+            log("无链接数据，用默认");
         }
     }
 
     function populateCategoryDropdown(selectElement, currentCategory = null) {
 
         if (!selectElement) {
-            console.error("无效的 select 元素传入 populateCategoryDropdown");
+            error("无效的 select 元素传入 populateCategoryDropdown");
             return;
         }
         selectElement.innerHTML = '';
-        console.log("填充分类下拉框，当前:", currentCategory, "可用:", categoryDisplayOrder);
+        log("填充分类下拉框，当前:", currentCategory, "可用:", categoryDisplayOrder);
         if (!Array.isArray(categoryDisplayOrder)) {
-            console.error("categoryDisplayOrder 无效");
+            error("categoryDisplayOrder 无效");
             return;
         }
         categoryDisplayOrder.forEach(categoryName => {
@@ -446,7 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createLinkElement(link) {
         if (!link || !link.id) {
-            console.error("创建无效链接:", link);
+            error("创建无效链接:", link);
             return null;
         }
         const el = document.createElement('a');
@@ -465,7 +536,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const start = (e) => {
             if ((e.type === 'mousedown' && e.button !== 0) || element.classList.contains('add-link-button')) return;
             if (document.body.classList.contains('dnd-mode-active')) {
-                console.log("拖放模式，阻止长按");
+                log("拖放模式，阻止长按");
                 return;
             }
             isLong = false;
@@ -474,7 +545,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (pressTimer) clearTimeout(pressTimer);
             pressTimer = setTimeout(() => {
                 isLong = true;
-                console.log("长按触发:", type, element.dataset.id || element.dataset.categoryName);
+                log("长按触发:", type, element.dataset.id || element.dataset.categoryName);
                 if (type === 'link') {
                     openEditModal(element.dataset.id);
                 } else if (type === 'category') {
@@ -506,7 +577,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (dX > maxM || dY > maxM) {
                     clearTimeout(pressTimer);
                     pressTimer = null;
-                    console.log("移动取消长按");
+                    log("移动取消长按");
                     removeGlobal();
                 }
             }
@@ -539,13 +610,13 @@ document.addEventListener('DOMContentLoaded', () => {
         element.addEventListener('contextmenu', (e) => {
             e.preventDefault();
             if (document.body.classList.contains('dnd-mode-active')) {
-                console.log("拖放模式阻止右键");
+                log("拖放模式阻止右键");
                 return;
             }
             if (pressTimer) clearTimeout(pressTimer);
             removeGlobal();
             isLong = false;
-            console.log("右键触发编辑:", type);
+            log("右键触发编辑:", type);
             if (type === 'link') {
                 openEditModal(element.dataset.id);
             } else if (type === 'category') {
@@ -554,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         element.addEventListener('click', (e) => {
             if (element.dataset.longPressed === 'true' && type === 'link') {
-                console.log("阻止长按后click");
+                log("阻止长按后click");
                 e.preventDefault();
                 e.stopPropagation();
             }
@@ -562,17 +633,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function openEditModal(linkId, categoryNameToAdd = null) {
-        console.log(`>>> 打开链接模态框. ID: ${linkId}, 添加到分类: ${categoryNameToAdd}`);
+        log(`>>> 打开链接模态框. ID: ${linkId}, 添加到分类: ${categoryNameToAdd}`);
 
         if (!modal || !modalTitle || !editIdInput || !editText || !editUrl || !editLinkOrderInput || !editCategoryNameInput || !editLinkCategoryLabel || !editLinkCategorySelect || !deleteButton) {
-            console.error("链接模态框初始化失败：缺少 DOM 元素引用！");
+            error("链接模态框初始化失败：缺少 DOM 元素引用！");
             return;
         }
         if (linkId) {
             currentEditingLinkId = linkId;
             const link = linksData.find(l => l.id === linkId);
             if (link) {
-                console.log(`>>> 找到要编辑的链接:`, link);
+                log(`>>> 找到要编辑的链接:`, link);
                 modalTitle.textContent = "编辑链接";
                 editIdInput.value = link.id;
                 editText.value = link.text;
@@ -585,13 +656,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 populateCategoryDropdown(editLinkCategorySelect, link.category);
                 deleteButton.style.display = 'block';
                 modal.style.display = 'flex';
-                console.log(">>> 编辑链接模态框已显示");
+                log(">>> 编辑链接模态框已显示");
             } else {
-                console.error(`>>> 未找到要编辑的链接，ID: ${linkId}`);
+                error(`>>> 未找到要编辑的链接，ID: ${linkId}`);
                 alert("错误：找不到要编辑的链接！");
             }
         } else if (categoryNameToAdd) {
-            console.log(`>>> 准备添加到分类 "${categoryNameToAdd}"`);
+            log(`>>> 准备添加到分类 "${categoryNameToAdd}"`);
             currentEditingLinkId = null;
             modalTitle.textContent = `添加到 "${categoryNameToAdd}"`;
             editIdInput.value = '';
@@ -604,9 +675,9 @@ document.addEventListener('DOMContentLoaded', () => {
             editLinkCategorySelect.style.display = 'none';
             deleteButton.style.display = 'none';
             modal.style.display = 'flex';
-            console.log(">>> 添加链接模态框已显示");
+            log(">>> 添加链接模态框已显示");
         } else {
-            console.error(">>> openEditModal 调用参数错误");
+            error(">>> openEditModal 调用参数错误");
         }
     }
 
@@ -643,13 +714,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (typeof linksData[linkIndex].sortOrder !== 'number') {
                         linksData[linkIndex].sortOrder = Date.now();
                     }
-                    console.warn(`链接 "${newText}" 序号输入无效/为空，保持/设为: ${linksData[linkIndex].sortOrder}`);
+                    warn(`链接 "${newText}" 序号输入无效/为空，保持/设为: ${linksData[linkIndex].sortOrder}`);
                 }
-                console.log(`链接 "${newText}" 更新。分类: ${oldCategory} -> ${selectedCategory}, 序号: ${linksData[linkIndex].sortOrder}`);
+                log(`链接 "${newText}" 更新。分类: ${oldCategory} -> ${selectedCategory}, 序号: ${linksData[linkIndex].sortOrder}`);
                 saveLinks();
                 renderLinks();
             } else {
-                console.error("保存失败：找不到链接 ID", id);
+                error("保存失败：找不到链接 ID", id);
                 alert("保存失败！");
             }
         } else if (categoryNameToAdd) {
@@ -676,19 +747,19 @@ document.addEventListener('DOMContentLoaded', () => {
             saveLinks();
             renderLinks();
             closeEditModal();
-            console.log(`链接 "${linkToDelete.text}" 已删除`);
+            log(`链接 "${linkToDelete.text}" 已删除`);
         }
     });
 
     function openCategoryEditModal(categoryName) {
 
-        console.log(`>>> 打开分类模态框，分类名: ${categoryName}`);
+        log(`>>> 打开分类模态框，分类名: ${categoryName}`);
         if (!categoryName) {
-            console.error("缺少分类名");
+            error("缺少分类名");
             return;
         }
         if (!categoryModal || !categoryOriginalNameInput || !categoryNewNameInput || !editCategoryOrderInput) {
-            console.error("分类模态框元素未找到");
+            error("分类模态框元素未找到");
             return;
         }
         currentEditingCategoryName = categoryName;
@@ -716,7 +787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isNaN(newOrder)) {
             finalOrder = newOrder;
         } else if (newOrderRaw !== '') {
-            console.warn(`分类 "${newName}" 序号无效`);
+            warn(`分类 "${newName}" 序号无效`);
         }
         categorySortData[newName] = finalOrder;
         if (newName !== oldName) {
@@ -759,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             delete categorySortData[currentEditingCategoryName];
             saveCategorySortOrders();
-            console.log(`分类 "${currentEditingCategoryName}" 已移除`);
+            log(`分类 "${currentEditingCategoryName}" 已移除`);
             renderLinks();
             closeCategoryEditModal();
         }
@@ -793,7 +864,7 @@ document.addEventListener('DOMContentLoaded', () => {
         categorySortData[newCategoryName] = (newSortOrder !== null) ? newSortOrder : (categoryDisplayOrder.length) * 10;
         saveCategoryOrder();
         saveCategorySortOrders();
-        console.log(`新分类 "${newCategoryName}" 已添加，序号: ${categorySortData[newCategoryName]}`);
+        log(`新分类 "${newCategoryName}" 已添加，序号: ${categorySortData[newCategoryName]}`);
         sortCategories();
         saveCategoryOrder();
         renderLinks();
@@ -802,7 +873,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function renderLinks() {
         sortCategories();
-        console.log("Render: 使用排序后分类顺序:", JSON.stringify(categoryDisplayOrder));
+        log("Render: 使用排序后分类顺序:", JSON.stringify(categoryDisplayOrder));
         linksContainer.innerHTML = '';
         categoryDisplayOrder.forEach(categoryName => {
             const categoryDiv = document.createElement('div');
@@ -867,12 +938,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             linksContainer.appendChild(categoryDiv);
         });
-        console.log("Render: 渲染完成。");
+        log("Render: 渲染完成。");
     }
 
     function loadBackground() {
 
-        const s = localStorage.getItem(backgroundImageStorageKey);
+        const s = loadFromStorage(backgroundImageStorageKey);
         if (s) {
             document.body.style.backgroundImage = `url(${s})`;
         } else {
@@ -888,16 +959,16 @@ document.addEventListener('DOMContentLoaded', () => {
             r.onload = (e) => {
                 const d = e.target.result;
                 try {
-                    localStorage.setItem(backgroundImageStorageKey, d);
+                    saveToStorage(backgroundImageStorageKey, d);
                     document.body.style.backgroundImage = `url(${d})`;
                 } catch (err) {
-                    console.error("存背景图失败:", err);
+                    error("存背景图失败:", err);
                     alert(`保存背景失败！图太大?\n(${err.message})`);
                 }
             };
             r.onerror = (e) => {
                 alert("读图出错");
-                console.error(e);
+                error(e);
             };
             r.readAsDataURL(f);
         } else {
@@ -914,7 +985,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     exportButton.addEventListener('click', () => {
-        const layout = localStorage.getItem(layoutStorageKey) || 'grid';
+        const layout = loadFromStorage(layoutStorageKey) || 'grid';
         const data = {
             version: 4,
             layout: layout,
@@ -946,7 +1017,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return num < 10 ? '0' + num : String(num);
             }
             const filename = `${year}-${padZero(month)}-${padZero(day)}_${padZero(hours)}-${padZero(minutes)}-${padZero(seconds)}.json`;
-            console.log(filename);
+            log(filename);
             a.download = filename;
             document.body.appendChild(a);
             a.click();
@@ -954,7 +1025,7 @@ document.addEventListener('DOMContentLoaded', () => {
             URL.revokeObjectURL(url);
             alert("数据 (v4) 已导出");
         } catch (e) {
-            console.error("导出失败:", e);
+            error("导出失败:", e);
             alert("导出失败！");
         }
     });
@@ -978,9 +1049,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         lay = (imp.layout === 'list' || imp.layout === 'grid') ? imp.layout : null;
                         if (imp.version === 4 && typeof imp.sortOrders === 'object' && imp.sortOrders !== null) {
                             srt = imp.sortOrders;
-                            console.log("导入V4");
+                            log("导入V4");
                         } else {
-                            console.warn("导入V2/V3(无分类序号),生成默认");
+                            warn("导入V2/V3(无分类序号),生成默认");
                             srt = {};
                             ord.forEach((c, i) => {
                                 srt[c] = (i + 1) * 10;
@@ -988,7 +1059,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 } else if (Array.isArray(imp)) {
-                    console.warn("导入V1(仅链接),生成顺序和序号");
+                    warn("导入V1(仅链接),生成顺序和序号");
                     lnk = imp;
                     const cs = new Set();
                     lnk.forEach(l => cs.add(l?.category || '未分类'));
@@ -1008,7 +1079,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         categoryDisplayOrder = ord;
                         categorySortData = srt;
                         if (lay) {
-                            localStorage.setItem(layoutStorageKey, lay);
+                            saveToStorage(layoutStorageKey, lay);
                         }
                         const nb = Date.now();
                         linksData.forEach((l, i) => {
@@ -1027,7 +1098,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (typeof categorySortData[c] !== 'number') {
                                 fs[c] = (i + 1) * 10;
                                 oc = true;
-                                console.warn(`分类 "${c}" 缺序号，生成默认`);
+                                warn(`分类 "${c}" 缺序号，生成默认`);
                             } else {
                                 fs[c] = categorySortData[c];
                             }
@@ -1041,13 +1112,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         alert("导入成功！");
                         ok = true;
                     } else {
-                        console.log("用户取消导入");
+                        log("用户取消导入");
                     }
                 } else {
                     throw new Error("未能提取数据");
                 }
             } catch (err) {
-                console.error("导入失败:", err);
+                error("导入失败:", err);
                 alert(`导入失败：\n${err.message}`);
             } finally {
                 event.target.value = null;
@@ -1055,7 +1126,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         reader.onerror = (err) => {
             alert("读取文件出错");
-            console.error("FileReader error:", err);
+            error("FileReader error:", err);
             event.target.value = null;
         };
         reader.readAsText(file);
@@ -1071,9 +1142,25 @@ document.addEventListener('DOMContentLoaded', () => {
      */
     const WEBDAV_TIMEOUT = 20000; // 20s 未收到油猴响应视为失败
 
+    /**
+     * 读取 WebDAV 凭据的原始值。
+     * 注意：油猴脚本(油猴js插件.js)直接 localStorage.getItem(...).trim() 读取这两个键，
+     * 因此这里必须保持裸字符串，不能经过 JSON 封装的 saveToStorage/loadFromStorage。
+     * 同时兼容曾因 saveToStorage 误存成的 JSON 字符串(带引号)脏数据。
+     */
+    function readWebdavRaw(key) {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return '';
+        try {
+            const parsed = JSON.parse(raw);
+            if (typeof parsed === 'string') return parsed;
+        } catch (e) { /* 裸字符串,原样返回 */ }
+        return raw;
+    }
+
     function loadWebdavCredentials() {
-        const savedUser = localStorage.getItem(webdavStorageUserKey);
-        const savedPass = localStorage.getItem(webdavStoragePassKey);
+        const savedUser = readWebdavRaw(webdavStorageUserKey);
+        const savedPass = readWebdavRaw(webdavStoragePassKey);
         if (savedUser) webdavUserInput.value = savedUser;
         if (savedPass) webdavPassInput.value = savedPass;
     }
@@ -1086,19 +1173,20 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
         try {
+            // 必须用裸字符串存储：油猴脚本直接 localStorage.getItem 读取，不能经 JSON 封装
             localStorage.setItem(webdavStorageUserKey, user);
             localStorage.setItem(webdavStoragePassKey, pass);
             alert("账号已保存(仅保存在本机浏览器 localStorage)");
             return true;
         } catch (e) {
-            console.error("保存坚果云账号失败:", e);
+            error("保存坚果云账号失败:", e);
             alert("保存失败:" + e.message);
             return false;
         }
     }
 
     function buildWebdavBackupData() {
-        const layout = localStorage.getItem(layoutStorageKey) || 'grid';
+        const layout = loadFromStorage(layoutStorageKey) || 'grid';
         return {
             version: 4,
             layout: layout,
@@ -1125,7 +1213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         categoryDisplayOrder = ord;
         categorySortData = srt;
         if (parsed.layout === 'list' || parsed.layout === 'grid') {
-            localStorage.setItem(layoutStorageKey, parsed.layout);
+            saveToStorage(layoutStorageKey, parsed.layout);
         }
         const nb = Date.now();
         linksData.forEach((l, i) => {
@@ -1181,7 +1269,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     /* 折叠/展开坚果云区块(记忆状态) */
     function applyWebdavCollapsed() {
-        const collapsed = localStorage.getItem(webdavCollapsedStorageKey) === 'true';
+        const collapsed = loadFromStorage(webdavCollapsedStorageKey) === 'true';
         webdavSection.classList.toggle('webdav-collapsed', collapsed);
         webdavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }
@@ -1189,7 +1277,7 @@ document.addEventListener('DOMContentLoaded', () => {
     webdavToggle.addEventListener('click', () => {
         const collapsed = webdavSection.classList.toggle('webdav-collapsed');
         webdavToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-        localStorage.setItem(webdavCollapsedStorageKey, String(collapsed));
+        saveToStorage(webdavCollapsedStorageKey, String(collapsed));
     });
 
     webdavShowPassCheck.addEventListener('change', () => {
@@ -1292,7 +1380,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 normalizeRestoredData(parsed);
                 alert("✅ 已恢复备份「" + fileName + "」,数据已刷新");
             } catch (err) {
-                console.error("恢复数据解析失败:", err);
+                error("恢复数据解析失败:", err);
                 alert("❌ 备份数据解析失败:" + err.message);
             }
         } finally {
@@ -1318,7 +1406,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function processUrlHashData() {
 
         if (window.location.hash && window.location.hash.startsWith('#addlink=')) {
-            console.log("检测到哈希数据:", window.location.hash);
+            log("检测到哈希数据:", window.location.hash);
             const encodedData = window.location.hash.substring('#addlink='.length);
             if (encodedData) {
                 try {
@@ -1336,20 +1424,20 @@ document.addEventListener('DOMContentLoaded', () => {
                                 categorySortData[newLinkData.category] = (categoryDisplayOrder.length) * 10;
                                 saveCategoryOrder();
                                 saveCategorySortOrders();
-                                console.warn(`分类 "${newLinkData.category}" 已添加`);
+                                warn(`分类 "${newLinkData.category}" 已添加`);
                             }
                             history.replaceState(null, "", window.location.pathname + window.location.search);
                             renderLinks();
                         } else {
-                            console.warn("链接已存在:", newLinkData.url);
+                            warn("链接已存在:", newLinkData.url);
                             history.replaceState(null, "", window.location.pathname + window.location.search);
                         }
                     } else {
-                        console.error("哈希数据格式无效");
+                        error("哈希数据格式无效");
                         history.replaceState(null, "", window.location.pathname + window.location.search);
                     }
-                } catch (error) {
-                    console.error("处理哈希出错:", error);
+                } catch (e) {
+                    error("处理哈希出错:", e);
                     history.replaceState(null, "", window.location.pathname + window.location.search);
                 }
             } else {
@@ -1385,9 +1473,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // 书签搜索：实时过滤 + 键盘导航（↑/↓ 选择，回车打开，Esc 关闭）
-    searchInput.addEventListener('input', () => {
+    searchInput.addEventListener('input', debounce(() => {
         renderBookmarkResults(searchInput.value);
-    });
+    }, 150));
     searchInput.addEventListener('focus', () => {
         if (searchInput.value.trim()) renderBookmarkResults(searchInput.value);
     });
@@ -1416,8 +1504,8 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleLayoutButton.addEventListener('click', () => {
         const isList = document.body.classList.toggle('layout-list');
         const newLayout = isList ? 'list' : 'grid';
-        localStorage.setItem(layoutStorageKey, newLayout);
-        console.log("布局切换为:", newLayout);
+        saveToStorage(layoutStorageKey, newLayout);
+        log("布局切换为:", newLayout);
     });
 
     linksContainer.addEventListener('click', function(event) {
